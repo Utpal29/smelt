@@ -59,6 +59,24 @@ export function notePaint(material: number, count: number): void {
   pendingPaintMaterial = material;
 }
 
+// Worker → main bridge. Accumulates sim-side fields from worker postMessage.
+// Multiple snapshots can arrive between consumeFeedback() calls, so we sum.
+export function applySimSnapshot(snap: {
+  explosions: number;
+  shake: number;
+  fireCells: number;
+  waterCells: number;
+  sandCells: number;
+  powderCells: number;
+}): void {
+  frame.explosions += snap.explosions;
+  frame.shake += snap.shake;
+  if (snap.fireCells > frame.fireCells) frame.fireCells = snap.fireCells;
+  if (snap.waterCells > frame.waterCells) frame.waterCells = snap.waterCells;
+  if (snap.sandCells > frame.sandCells) frame.sandCells = snap.sandCells;
+  if (snap.powderCells > frame.powderCells) frame.powderCells = snap.powderCells;
+}
+
 export function consumeFeedback(): FeedbackFrame {
   frame.paintCells = pendingPaintCells;
   frame.paintMaterial = pendingPaintMaterial;

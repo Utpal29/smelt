@@ -1,13 +1,37 @@
 import { setupCanvas, render, setupGlow, renderGlow } from './renderer';
-import { step } from './simulation';
 import { attachInput, input } from './input';
 import { buildPalette, attachControls, refreshSelectedLabel, ui } from './ui';
-import { clearGrid } from './grid';
+import { clearGrid, createGridBuffers, initGrid } from './grid';
 import { CELL_SIZE } from './types';
 import { MATERIALS } from './materials';
-import { consumeFeedback, type FeedbackFrame } from './feedback';
+import { applySimSnapshot, consumeFeedback, type FeedbackFrame } from './feedback';
 import { attachAudioUnlock, isMuted, setMuted, updateAudio } from './audio';
 import { loadPreset, loadScenePng, PRESETS, saveScenePng, type PresetId } from './scenes';
+
+if (typeof SharedArrayBuffer === 'undefined' || !crossOriginIsolated) {
+  document.body.innerHTML =
+    '<div style="padding:24px;font-family:system-ui;color:#fcd">' +
+    '<h1>Cross-origin isolation required</h1>' +
+    '<p>Smelt now runs its physics in a Web Worker with shared memory. ' +
+    "This needs <code>SharedArrayBuffer</code>, which the browser only enables when the page is served with " +
+    '<code>Cross-Origin-Opener-Policy: same-origin</code> and ' +
+    '<code>Cross-Origin-Embedder-Policy: require-corp</code> headers.</p>' +
+    '<p>If you’re running locally, restart the dev server (<code>npm run dev</code>). ' +
+    'If you opened the static <code>dist/</code> by double-clicking, serve it instead (<code>npm run preview</code>).</p>' +
+    '</div>';
+  throw new Error('crossOriginIsolated is false — cannot start worker.');
+}
+
+// Create shared buffers, hook this thread's grid bindings to them, then spawn worker.
+const buffers = createGridBuffers();
+initGrid(buffers);
+
+const simWorker = new Worker(new URL('./simulation.worker.ts', import.meta.url), { type: 'module' });
+simWorker.postMessage({ type: 'init', buffers });
+simWorker.addEventListener('message', (e: MessageEvent) => {
+  const msg = e.data;
+  if (msg && msg.type === 'feedback') applySimSnapshot(msg);
+});
 
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const paletteEl = document.getElementById('palette') as HTMLElement;
@@ -25,6 +49,13 @@ const ctx = setupCanvas(canvas);
 
 buildPalette(paletteEl);
 refreshSelectedLabel();
+let lastPausedSent = false;
+function syncPause(): void {
+  if (ui.paused !== lastPausedSent) {
+    lastPausedSent = ui.paused;
+    simWorker.postMessage({ type: 'pause', paused: ui.paused });
+  }
+}
 attachControls({
   brushInput,
   pauseBtn,
@@ -181,7 +212,7 @@ function drawCursor(): void {
 }
 
 function frame(): void {
-  if (!ui.paused) step();
+  syncPause();
   const frameFeedback = consumeFeedback();
   const now = performance.now();
   updateAudio(frameFeedback);

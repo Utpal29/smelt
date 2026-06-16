@@ -13,6 +13,8 @@ import {
   STEAM,
   MUD,
   GUNPOWDER,
+  ICE,
+  METAL,
   FIRE_LIFESPAN,
   SMOKE_LIFESPAN,
   STEAM_LIFESPAN,
@@ -174,6 +176,22 @@ export const MATERIALS: MaterialDef[] = [
     density: 5,
     behavior: 'gunpowder',
     flammable: true,
+  },
+  {
+    id: ICE,
+    name: 'Ice',
+    key: 't',
+    palette: buildPalette(['#bfe7ff', '#9fd3f4', '#7ec0e6', '#6aaad0'], SHADE_COUNT),
+    density: 9,
+    behavior: 'ice',
+  },
+  {
+    id: METAL,
+    name: 'Metal',
+    key: 'r',
+    palette: buildPalette(['#5a626d', '#7c8794', '#9aa6b2', '#b6c1ce'], SHADE_COUNT),
+    density: 12,
+    behavior: 'metal',
   },
 ];
 

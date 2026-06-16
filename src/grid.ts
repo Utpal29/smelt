@@ -1,8 +1,32 @@
 import { COLS, ROWS, EMPTY } from './types';
 
-export const cells = new Uint8Array(COLS * ROWS);
-export const meta = new Uint8Array(COLS * ROWS);
-export const temp = new Uint8Array(COLS * ROWS);
+const GRID_BYTES = COLS * ROWS;
+
+export interface GridBuffers {
+  cells: SharedArrayBuffer;
+  meta: SharedArrayBuffer;
+  temp: SharedArrayBuffer;
+}
+
+export function createGridBuffers(): GridBuffers {
+  return {
+    cells: new SharedArrayBuffer(GRID_BYTES),
+    meta: new SharedArrayBuffer(GRID_BYTES),
+    temp: new SharedArrayBuffer(GRID_BYTES),
+  };
+}
+
+// Live ESM bindings — reassigned by initGrid, consumers see the latest.
+type SharedBytes = Uint8Array<ArrayBufferLike>;
+export let cells: SharedBytes = new Uint8Array(0);
+export let meta: SharedBytes = new Uint8Array(0);
+export let temp: SharedBytes = new Uint8Array(0);
+
+export function initGrid(b: GridBuffers): void {
+  cells = new Uint8Array(b.cells);
+  meta = new Uint8Array(b.meta);
+  temp = new Uint8Array(b.temp);
+}
 
 export function idx(x: number, y: number): number {
   return y * COLS + x;

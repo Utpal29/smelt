@@ -1,5 +1,5 @@
-export const COLS = 300;
-export const ROWS = 200;
+export const COLS = 420;
+export const ROWS = 280;
 export const CELL_SIZE = 3;
 
 export const EMPTY = 0;
@@ -16,6 +16,8 @@ export const PLANT = 10;
 export const STEAM = 11;
 export const MUD = 12;
 export const GUNPOWDER = 13;
+export const ICE = 14;
+export const METAL = 15;
 
 export const SHADE_BITS = 3;
 export const SHADE_COUNT = 1 << SHADE_BITS;
@@ -44,7 +46,9 @@ export interface MaterialDef {
     | 'lava'
     | 'plant'
     | 'mud'
-    | 'gunpowder';
+    | 'gunpowder'
+    | 'ice'
+    | 'metal';
   flammable?: boolean;
   lifespan?: number;
   liquidSpread?: number;

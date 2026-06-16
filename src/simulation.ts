@@ -15,6 +15,8 @@ import {
   STEAM,
   MUD,
   GUNPOWDER,
+  ICE,
+  METAL,
 } from './types';
 import { cells, meta, temp, get, swap } from './grid';
 import { materialById, randomShade } from './materials';
@@ -49,6 +51,11 @@ const FLAMMABLE_IGNITE_TEMP = 150;
 const GUNPOWDER_IGNITE_TEMP = 95;
 const STONE_MELT_TEMP = 245;
 const STONE_MELT_CHANCE = 0.003;
+const ICE_TEMP = 10;
+const ICE_MELT_TEMP = 70;
+const ICE_FREEZE_CHANCE = 0.06;
+const METAL_MELT_TEMP = 240;
+const METAL_MELT_CHANCE = 0.002;
 
 const moved = new Uint8Array(COLS * ROWS);
 const nextTemp = new Uint8Array(COLS * ROWS);
@@ -70,12 +77,12 @@ export function step(): void {
 
 function updateCell(x: number, y: number): void {
   const i = y * COLS + x;
-  if (moved[i]) return;
   const id = cells[i];
   if (id === EMPTY) return;
+  if (moved[i]) return;
+  if (applyTemperatureTransition(x, y, i, id)) return;
   noteActiveMaterial(id);
   const def = materialById(id);
-  if (applyTemperatureTransition(x, y, i, id)) return;
   switch (def.behavior) {
     case 'powder':
       updatePowder(x, y, def.density);
@@ -108,6 +115,52 @@ function updateCell(x: number, y: number): void {
         updateGas(x, y, def.lifespan ?? 100);
       }
       break;
+    case 'ice':
+      updateIce(x, y);
+      break;
+    case 'metal':
+      updateMetal(x, y);
+      break;
+  }
+}
+
+function updateMetal(x: number, y: number): void {
+  // Metal actively conducts: pour heat into non-metal neighbors so a hot end of a
+  // metal bar ignites flammables touching the cold end after a short delay.
+  const i = y * COLS + x;
+  const own = temp[i];
+  if (own < 40) return; // cold metal does nothing
+  const give = own - 10;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+      const ni = ny * COLS + nx;
+      const nid = cells[ni];
+      if (nid === EMPTY || nid === METAL || nid === FIRE || nid === LAVA) continue;
+      heatCell(ni, give);
+    }
+  }
+}
+
+function updateIce(x: number, y: number): void {
+  // Freeze adjacent water cells (4-neighbor) with low chance.
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (Math.abs(dx) + Math.abs(dy) !== 1) continue;
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) continue;
+      const ni = ny * COLS + nx;
+      if (moved[ni]) continue;
+      if (cells[ni] !== WATER) continue;
+      if (temp[ni] >= ICE_MELT_TEMP) continue;
+      if (Math.random() >= ICE_FREEZE_CHANCE) continue;
+      setCellWithTemp(ni, ICE, randomShade(), ICE_TEMP);
+      markMoved(nx, ny);
+    }
   }
 }
 
@@ -118,6 +171,9 @@ function markMoved(x: number, y: number): void {
 function canDisplace(targetId: number, ownDensity: number): boolean {
   if (targetId === EMPTY) return true;
   const def = materialById(targetId);
+  // Gases are always displaceable by anything denser — otherwise a steam puff
+  // under a falling liquid creates a permanent deadlock.
+  if (def.behavior === 'gas') return def.density < ownDensity;
   const isFluid = isFlowing(def.behavior);
   return isFluid && def.density < ownDensity;
 }
@@ -154,34 +210,61 @@ function diffuseHeat(): void {
       continue;
     }
     if (id === STEAM) {
-      nextTemp[i] = Math.max(temp[i], STEAM_TEMP);
+      nextTemp[i] = temp[i] > STEAM_TEMP ? temp[i] : STEAM_TEMP;
+      continue;
+    }
+    if (id === ICE) {
+      // Ice acts as a heat sink — normally pins cold. But if a neighbor is hotter
+      // than the melt threshold, allow the ice cell to accumulate heat so it can melt.
+      const u = i >= COLS ? temp[i - COLS] : 0;
+      const d = i < n - COLS ? temp[i + COLS] : 0;
+      const l = i % COLS !== 0 ? temp[i - 1] : 0;
+      const r = i % COLS !== COLS - 1 ? temp[i + 1] : 0;
+      const hottest = Math.max(u, d, l, r);
+      if (hottest < ICE_MELT_TEMP) {
+        nextTemp[i] = ICE_TEMP;
+      } else {
+        // Half-step toward the hottest neighbor; once it crosses melt temp the next
+        // applyTemperatureTransition pass converts it to water.
+        const own = temp[i];
+        nextTemp[i] = own + ((hottest - own) >> 1);
+      }
       continue;
     }
 
     const own = temp[i];
-    let total = own * 4;
-    let count = 4;
-    if (i >= COLS) {
-      total += temp[i - COLS];
-      count++;
-    }
-    if (i < n - COLS) {
-      total += temp[i + COLS];
-      count++;
-    }
-    if (i % COLS !== 0) {
-      total += temp[i - 1];
-      count++;
-    }
-    if (i % COLS !== COLS - 1) {
-      total += temp[i + 1];
-      count++;
+    const col = i % COLS;
+    const hasUp = i >= COLS;
+    const hasDown = i < n - COLS;
+    const hasLeft = col !== 0;
+    const hasRight = col !== COLS - 1;
+    const up = hasUp ? temp[i - COLS] : 0;
+    const down = hasDown ? temp[i + COLS] : 0;
+    const left = hasLeft ? temp[i - 1] : 0;
+    const right = hasRight ? temp[i + 1] : 0;
+
+    // Cold cell with no hot neighbors stays cold — skip the math.
+    if (own === 0 && up === 0 && down === 0 && left === 0 && right === 0) {
+      nextTemp[i] = 0;
+      continue;
     }
 
+    let count = 4;
+    if (hasUp) count++;
+    if (hasDown) count++;
+    if (hasLeft) count++;
+    if (hasRight) count++;
+    const total = own * 4 + up + down + left + right;
     const avg = (total / count) | 0;
-    let heat = own + ((avg - own) >> HEAT_DIFFUSE_SHIFT);
-    if (heat > HEAT_COOLING) heat -= HEAT_COOLING;
-    else heat = 0;
+    let heat: number;
+    if (id === METAL) {
+      // Metal conducts heat fast and does not cool on its own — it stores ambient heat.
+      heat = own + ((avg - own) >> 1);
+    } else {
+      heat = own + ((avg - own) >> HEAT_DIFFUSE_SHIFT);
+      if (heat > HEAT_COOLING) heat -= HEAT_COOLING;
+      else heat = 0;
+    }
     nextTemp[i] = heat;
   }
   temp.set(nextTemp);
@@ -202,7 +285,17 @@ function resolveLavaWaterContacts(): void {
         const ni = ny * COLS + nx;
         if (moved[ni]) continue;
         const nid = cells[ni];
-        if (nid !== WATER && nid !== STEAM) continue;
+        if (nid !== WATER && nid !== ICE) continue;
+        if (nid === ICE) {
+          // Lava is so much hotter than ice that the ice flash-vaporizes to steam.
+          // Going through liquid water would immediately trigger lava→stone via the
+          // water reaction below, killing the lava after one frame.
+          setCellWithTemp(ni, STEAM, 0, STEAM_TEMP);
+          markMoved(nx, ny);
+          dx = 2;
+          dy = 2;
+          continue;
+        }
         setCellWithTemp(i, STONE, randomShade(), 180);
         setCellWithTemp(ni, STEAM, 0, STEAM_TEMP);
         markMoved(x, y);
@@ -216,6 +309,20 @@ function resolveLavaWaterContacts(): void {
 
 function applyTemperatureTransition(x: number, y: number, i: number, id: number): boolean {
   const heat = temp[i];
+  if (id === ICE) {
+    if (heat >= ICE_MELT_TEMP) {
+      setCellWithTemp(i, WATER, randomShade(), ICE_MELT_TEMP - 10);
+      markMoved(x, y);
+      return true;
+    }
+    return false;
+  }
+  if (heat < GUNPOWDER_IGNITE_TEMP) return false;
+  if (id === METAL && heat >= METAL_MELT_TEMP && Math.random() < METAL_MELT_CHANCE) {
+    setCellWithTemp(i, LAVA, randomShade(), LAVA_TEMP);
+    markMoved(x, y);
+    return true;
+  }
   if (id === WATER && heat >= WATER_EVAP_TEMP) {
     if (tryCoolAdjacentLava(x, y, i)) return true;
     setCellWithTemp(i, STEAM, 0, STEAM_TEMP);
@@ -340,12 +447,18 @@ function updateLava(x: number, y: number, density: number, spread: number): void
       const nid = cells[ni];
       if (nid === EMPTY) continue;
       heatCell(ni, LAVA_TEMP - 25);
-      if (nid === WATER || nid === STEAM) {
+      if (nid === WATER) {
         setCellWithTemp(i, STONE, randomShade(), 180);
         setCellWithTemp(ni, STEAM, 0, STEAM_TEMP);
         markMoved(x, y);
         markMoved(nx, ny);
         return;
+      }
+      if (nid === ICE) {
+        // Lava flash-vaporizes ice to steam (see resolveLavaWaterContacts for rationale).
+        setCellWithTemp(ni, STEAM, 0, STEAM_TEMP);
+        markMoved(nx, ny);
+        continue;
       }
       const ndef = materialById(nid);
       if (ndef.flammable && !moved[ni] && Math.random() < FIRE_IGNITE_CHANCE) {
