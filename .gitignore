@@ -1,0 +1,25 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# system
+.DS_Store
+Thumbs.db
+
+# env
+.env
+.env.*
+*.local
+
+# editor
+.vscode/
+.idea/
+
+# logs
+*.log
+npm-debug.log*
+
+# markdown (per project convention)
+*.md
