@@ -1,4 +1,4 @@
-import { COLS, ROWS, CELL_SIZE, EMPTY } from './types';
+import { COLS, ROWS, CELL_SIZE, EMPTY, GUNPOWDER } from './types';
 import { inBounds, set, get } from './grid';
 import { materialById, randomShade } from './materials';
 
@@ -72,7 +72,7 @@ function stampLine(x0: number, y0: number, x1: number, y1: number, r: number, ma
 
 function stamp(cx: number, cy: number, r: number, mat: number): void {
   const r2 = r * r;
-  const sparse = mat !== EMPTY && materialById(mat).behavior === 'powder';
+  const sparse = mat !== EMPTY && (materialById(mat).behavior === 'powder' || mat === GUNPOWDER);
   for (let dy = -r; dy <= r; dy++) {
     for (let dx = -r; dx <= r; dx++) {
       if (dx * dx + dy * dy > r2) continue;

@@ -1,4 +1,4 @@
-import { COLS, ROWS, CELL_SIZE, EMPTY, SHADE_MASK, SHADE_COUNT, FIRE, LAVA } from './types';
+import { COLS, ROWS, EMPTY, SHADE_MASK, SHADE_COUNT, FIRE, LAVA } from './types';
 import { cells, meta } from './grid';
 import { MATERIALS } from './materials';
 
@@ -35,12 +35,12 @@ const BG_RGB = (() => {
 
 let imageData: ImageData | null = null;
 let buffer: Uint8ClampedArray | null = null;
+const glowCells = new Uint32Array(COLS * ROWS);
+let glowCount = 0;
 
 export function setupCanvas(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
   canvas.width = COLS;
   canvas.height = ROWS;
-  canvas.style.width = `${COLS * CELL_SIZE}px`;
-  canvas.style.height = `${ROWS * CELL_SIZE}px`;
   const ctx = canvas.getContext('2d', { alpha: false })!;
   ctx.imageSmoothingEnabled = false;
   imageData = ctx.createImageData(COLS, ROWS);
@@ -52,6 +52,7 @@ export function render(ctx: CanvasRenderingContext2D): void {
   if (!imageData || !buffer) return;
   const data = buffer;
   const n = COLS * ROWS;
+  glowCount = 0;
   for (let i = 0; i < n; i++) {
     const id = cells[i];
     const di = i * 4;
@@ -76,6 +77,10 @@ export function render(ctx: CanvasRenderingContext2D): void {
       data[di + 1] = pal[pi + 1];
       data[di + 2] = pal[pi + 2];
       data[di + 3] = 255;
+      if (id === FIRE || id === LAVA) {
+        glowCells[glowCount] = i;
+        glowCount++;
+      }
     }
   }
   ctx.putImageData(imageData, 0, 0);
@@ -83,6 +88,7 @@ export function render(ctx: CanvasRenderingContext2D): void {
 
 let glowSpriteFire: HTMLCanvasElement | null = null;
 let glowSpriteLava: HTMLCanvasElement | null = null;
+let glowWasVisible = false;
 
 function makeGlowSprite(size: number, color: string): HTMLCanvasElement {
   const c = document.createElement('canvas');
@@ -107,6 +113,15 @@ export function setupGlow(displayCellSize: number): { width: number; height: num
 
 export function renderGlow(ctx: CanvasRenderingContext2D, displayCellSize: number): void {
   if (!glowSpriteFire || !glowSpriteLava) return;
+  if (glowCount === 0) {
+    if (glowWasVisible) {
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      glowWasVisible = false;
+    }
+    return;
+  }
+
+  glowWasVisible = true;
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.globalCompositeOperation = 'lighter';
   const fireSize = glowSpriteFire.width;
@@ -114,10 +129,9 @@ export function renderGlow(ctx: CanvasRenderingContext2D, displayCellSize: numbe
   const fireHalf = fireSize / 2;
   const lavaHalf = lavaSize / 2;
   const half = displayCellSize / 2;
-  const n = COLS * ROWS;
-  for (let i = 0; i < n; i++) {
+  for (let g = 0; g < glowCount; g++) {
+    const i = glowCells[g];
     const id = cells[i];
-    if (id !== FIRE && id !== LAVA) continue;
     const x = i % COLS;
     const y = (i / COLS) | 0;
     const cx = x * displayCellSize + half;

@@ -9,21 +9,32 @@
   <body>
     <div id="app">
       <header id="topbar">
-        <span id="title">smelt</span>
-        <span id="selected-label"></span>
+        <div id="brand">
+          <span id="title">smelt</span>
+          <span id="subtitle">element forge</span>
+        </div>
+        <div id="status-strip">
+          <span class="status-pill">active <strong id="selected-label"></strong></span>
+          <span class="status-pill" id="fps"></span>
+        </div>
       </header>
       <div id="stage">
         <canvas id="canvas"></canvas>
       </div>
       <div id="ui">
-        <div id="palette"></div>
         <div id="controls">
-          <label>Brush <input id="brush" type="range" min="1" max="20" value="5" /><span id="brush-val">5</span></label>
-          <button id="pause">Pause</button>
-          <button id="clear">Clear</button>
-          <span id="fps"></span>
+          <label id="brush-control">
+            <span>Brush</span>
+            <input id="brush" type="range" min="1" max="20" value="5" />
+            <span id="brush-val">5</span>
+          </label>
+          <div id="action-row">
+            <button id="pause">Pause</button>
+            <button id="clear">Clear</button>
+          </div>
         </div>
-        <div id="hint">1–8 materials &middot; 0 eraser &middot; space pause &middot; c clear</div>
+        <div id="palette"></div>
+        <div id="hint">1–9/q/e materials &middot; 0 eraser &middot; space pause &middot; c clear</div>
       </div>
     </div>
     <script type="module" src="/src/main.ts"></script>

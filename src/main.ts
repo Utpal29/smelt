@@ -44,8 +44,6 @@ function makeOverlay(w: number, h: number): HTMLCanvasElement {
   c.height = h;
   c.style.position = 'absolute';
   c.style.pointerEvents = 'none';
-  c.style.width = canvas.style.width;
-  c.style.height = canvas.style.height;
   stage.appendChild(c);
   return c;
 }
@@ -57,8 +55,12 @@ function positionOverlays(): void {
   const top = r.top - pr.top + 'px';
   glowCanvas.style.left = left;
   glowCanvas.style.top = top;
+  glowCanvas.style.width = `${r.width}px`;
+  glowCanvas.style.height = `${r.height}px`;
   cursorCanvas.style.left = left;
   cursorCanvas.style.top = top;
+  cursorCanvas.style.width = `${r.width}px`;
+  cursorCanvas.style.height = `${r.height}px`;
 }
 positionOverlays();
 window.addEventListener('resize', positionOverlays);
