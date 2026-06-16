@@ -1,6 +1,7 @@
 import { COLS, ROWS, CELL_SIZE, EMPTY, GUNPOWDER } from './types';
 import { inBounds, set, get } from './grid';
 import { materialById, randomShade } from './materials';
+import { notePaint } from './feedback';
 
 export interface InputState {
   mouseGridX: number;
@@ -73,6 +74,7 @@ function stampLine(x0: number, y0: number, x1: number, y1: number, r: number, ma
 function stamp(cx: number, cy: number, r: number, mat: number): void {
   const r2 = r * r;
   const sparse = mat !== EMPTY && (materialById(mat).behavior === 'powder' || mat === GUNPOWDER);
+  let painted = 0;
   for (let dy = -r; dy <= r; dy++) {
     for (let dx = -r; dx <= r; dx++) {
       if (dx * dx + dy * dy > r2) continue;
@@ -81,11 +83,14 @@ function stamp(cx: number, cy: number, r: number, mat: number): void {
       if (!inBounds(x, y)) continue;
       if (mat === EMPTY) {
         set(x, y, EMPTY, 0);
+        painted++;
         continue;
       }
       if (get(x, y) !== EMPTY) continue;
       if (sparse && Math.random() >= 0.6) continue;
       set(x, y, mat, randomShade());
+      painted++;
     }
   }
+  notePaint(mat, painted);
 }

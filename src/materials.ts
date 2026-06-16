@@ -168,7 +168,7 @@ export const MATERIALS: MaterialDef[] = [
   },
   {
     id: GUNPOWDER,
-    name: 'Powder',
+    name: 'Gunpowder',
     key: 'e',
     palette: buildPalette(['#25251a', '#393929', '#555544'], SHADE_COUNT),
     density: 5,

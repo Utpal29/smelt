@@ -18,6 +18,7 @@ import {
 } from './types';
 import { cells, meta, temp, get, swap } from './grid';
 import { materialById, randomShade } from './materials';
+import { beginSimulationFeedback, noteActiveMaterial, noteExplosion } from './feedback';
 
 const LIQUID_SPREAD = 4;
 const FIRE_IGNITE_CHANCE = 0.04;
@@ -34,6 +35,8 @@ const MUD_DRY_AGE = 170;
 const MUD_DRY_CHANCE = 0.025;
 const GUNPOWDER_IGNITE_CHANCE = 0.12;
 const EXPLOSION_RADIUS = 7;
+const EXPLOSION_SCATTER_STEPS = 6;
+const EXPLOSION_SCATTER_CHANCE = 0.7;
 const EXPLOSION_FIRE_CHANCE = 0.28;
 const FIRE_TEMP = 220;
 const LAVA_TEMP = 255;
@@ -51,6 +54,7 @@ const moved = new Uint8Array(COLS * ROWS);
 const nextTemp = new Uint8Array(COLS * ROWS);
 
 export function step(): void {
+  beginSimulationFeedback();
   moved.fill(0);
   diffuseHeat();
   resolveLavaWaterContacts();
@@ -69,6 +73,7 @@ function updateCell(x: number, y: number): void {
   if (moved[i]) return;
   const id = cells[i];
   if (id === EMPTY) return;
+  noteActiveMaterial(id);
   const def = materialById(id);
   if (applyTemperatureTransition(x, y, i, id)) return;
   switch (def.behavior) {
@@ -516,6 +521,7 @@ function nearMaterial(x: number, y: number, material: number): boolean {
 }
 
 function explodeAt(cx: number, cy: number): void {
+  noteExplosion(EXPLOSION_RADIUS);
   const r2 = EXPLOSION_RADIUS * EXPLOSION_RADIUS;
   for (let dy = -EXPLOSION_RADIUS; dy <= EXPLOSION_RADIUS; dy++) {
     for (let dx = -EXPLOSION_RADIUS; dx <= EXPLOSION_RADIUS; dx++) {
@@ -524,16 +530,43 @@ function explodeAt(cx: number, cy: number): void {
       const y = cy + dy;
       if (x < 0 || x >= COLS || y < 0 || y >= ROWS) continue;
       const i = y * COLS + x;
+      if (moved[i]) continue;
       const id = cells[i];
       if (id === STONE || id === LAVA) continue;
       if (id === GUNPOWDER || Math.random() < EXPLOSION_FIRE_CHANCE) {
         setCellWithTemp(i, FIRE, 0, EXPLOSION_TEMP);
-      } else {
-        setCellWithTemp(i, EMPTY, 0, EXPLOSION_TEMP / 2);
+        markMoved(x, y);
+        continue;
       }
+      if (id !== EMPTY && Math.random() < EXPLOSION_SCATTER_CHANCE && scatterBlastCell(cx, cy, x, y)) continue;
+      setCellWithTemp(i, EMPTY, 0, EXPLOSION_TEMP / 2);
       markMoved(x, y);
     }
   }
+}
+
+function scatterBlastCell(cx: number, cy: number, x: number, y: number): boolean {
+  const i = y * COLS + x;
+  const id = cells[i];
+  const shade = meta[i];
+  const heat = Math.max(temp[i], EXPLOSION_TEMP / 2);
+  const stepX = Math.sign(x - cx);
+  const stepY = Math.sign(y - cy);
+  if (stepX === 0 && stepY === 0) return false;
+
+  for (let step = EXPLOSION_SCATTER_STEPS; step >= 2; step--) {
+    const tx = x + stepX * step;
+    const ty = y + stepY * step;
+    if (tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) continue;
+    const ti = ty * COLS + tx;
+    if (moved[ti] || cells[ti] !== EMPTY) continue;
+    setCellWithTemp(ti, id, shade, heat);
+    setCellWithTemp(i, EMPTY, 0, EXPLOSION_TEMP / 2);
+    markMoved(x, y);
+    markMoved(tx, ty);
+    return true;
+  }
+  return false;
 }
 
 function updateGas(x: number, y: number, lifespan: number): void {
